@@ -1,0 +1,61 @@
+---
+title: "Process data from the Face-Body Compound task"
+author: "Ruud Hortensius (University of Glasgow)"
+date: "26/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) #install.packages("tidyverse")
+library(fs) #install.packages("fs")
+```
+
+## Importing data
+
+Load the data stored in /data
+
+```{r data}
+DF <- dir_ls("data/", regexp = "\\.csv$") %>% #get all the csv files in the data folder
+  map_dfr(read.delim, sep = ",", header = TRUE) %>% #read in the data
+  select("participant", "impar_incluso", "condsFile", "Body", "Face", "Type", "Gender", "CAfear", "CAanger", "key_resp_2.keys", "key_resp_2.rt") %>% #select the relevant columns
+  filter(!is.na(key_resp_2.rt)) %>% #remove the instruction responses 
+  rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys) #give responses a logical name
+```
+
+Get the correct response pairing (q and p)
+```{r keys}
+Fear <- levels(droplevels(DF$CAfear))[2] #not the most elegant way
+Anger <- levels(droplevels(DF$CAanger))[2]
+HappyF <- ifelse(Fear == "q", "p", "q")
+HappyA <- ifelse(Anger == "q", "p", "q")
+```
+
+Calculate the correct response per trial
+```{r ca}
+DF <- DF %>%
+  mutate(CA = ifelse(Face == "Fear" & condsFile == "fear.xlsx", Fear, ifelse(Face == "Happy" & condsFile == "fear.xlsx", HappyF, ifelse(Face == "Anger" & condsFile == "anger.xlsx", Anger, HappyA)))) #get CA for the tasks
+```
+
+Calculate the accuracy
+```{r acc}
+DF <- DF %>%
+  mutate(acc = ifelse(CA == resp, 1, 0))
+```
+
+Plot accuracy
+```{r plot}
+DF %>% ggplot(., aes(Face, acc, group=Body)) +
+  geom_point(aes(colour = Body), position=position_jitter(width = .05), size = .5, shape = 20)+
+  theme_classic()
+```
+
+
+
+Calculate hits, false alarms, misses, and correction rejections (to do)
+```{r SDT}
+DF$n_hits 
+DF$_fa
+DF$n_miss
+DF$n_cr
+```
