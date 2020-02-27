@@ -2,39 +2,54 @@
 title: "Process data from the Face-Body Compound task"
 author: "Ruud Hortensius (University of Glasgow)"
 date: "26/02/2020"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
 ---
+
+Script is sequentially to outline logic of steps
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse) #install.packages("tidyverse")
 library(fs) #install.packages("fs")
+library(psycho) #install.packages("psycho")
 ```
 
-## Importing data
+## Importing and wrangling data
 
 Load the data stored in /data
 
-```{r data}
+```{r data, warning=FALSE}
 DF <- dir_ls("data/", regexp = "\\.csv$") %>% #get all the csv files in the data folder
   map_dfr(read.delim, sep = ",", header = TRUE) %>% #read in the data
   select("participant", "impar_incluso", "condsFile", "Body", "Face", "Type", "Gender", "CAfear", "CAanger", "key_resp_2.keys", "key_resp_2.rt") %>% #select the relevant columns
   filter(!is.na(key_resp_2.rt)) %>% #remove the instruction responses 
-  rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys) #give responses a logical name
+  rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys, "task" = condsFile) %>% #give responses and task a logical name
+  mutate(session = str_match(participant,"A|B"), group = str_match(participant,"Einc|Eimp"), participant = str_remove_all(participant, "[:alpha:]")) %>% #get group and session
+  mutate(task = str_match(task,"fear|anger")) %>%
+  mutate_all(str_to_lower) #easier to have conditional statements
 ```
 
 Get the correct response pairing (q and p)
 ```{r keys}
-Fear <- levels(droplevels(DF$CAfear))[2] #not the most elegant way
-Anger <- levels(droplevels(DF$CAanger))[2]
-HappyF <- ifelse(Fear == "q", "p", "q")
-HappyA <- ifelse(Anger == "q", "p", "q")
+DF <- DF %>%
+  mutate_all(na_if,"")   %>% #for we can do fill "" need to be NA
+  group_by(participant, group, session) %>% 
+  mutate(CAfear = as.character(CAfear), CAanger = as.character(CAanger))  %>% #remove the factors
+  fill(CAfear, .direction = "down") %>% #fill the CAfear column
+  fill(CAanger, .direction = "down") %>% #fill the CAangry column
+  mutate(HappyF = ifelse(CAfear == "q", "p", "q"), HappyA = ifelse(CAanger == "q", "p", "q")) #create the CAhappy column seperately for the fear/anger tasks
 ```
+
+## Get accuracy
 
 Calculate the correct response per trial
 ```{r ca}
 DF <- DF %>%
-  mutate(CA = ifelse(Face == "Fear" & condsFile == "fear.xlsx", Fear, ifelse(Face == "Happy" & condsFile == "fear.xlsx", HappyF, ifelse(Face == "Anger" & condsFile == "anger.xlsx", Anger, HappyA)))) #get CA for the tasks
+  mutate(CA = ifelse(Face == "fear" & task == "fear", CAfear, ifelse(Face == "happy" & task == "fear", HappyF, ifelse(Face == "anger" & task == "anger", CAanger, HappyA)))) #get CA for the tasks
 ```
 
 Calculate the accuracy
@@ -45,17 +60,67 @@ DF <- DF %>%
 
 Plot accuracy
 ```{r plot}
-DF %>% ggplot(., aes(Face, acc, group=Body)) +
-  geom_point(aes(colour = Body), position=position_jitter(width = .05), size = .5, shape = 20)+
-  theme_classic()
+DF %>% group_by(participant, group, session, task) %>% 
+  summarise(acc = mean(acc)) %>% 
+  ggplot(., aes(group, acc, fill=group)) +
+  geom_point(aes(colour = group), size = .5, shape = 20)+
+  geom_boxplot(aes(x=group,y=acc),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
+  ylim(0,1)+
+  theme_classic() +
+  facet_wrap(task~session) + 
+  ggtitle(paste("Accuracy per task and session"))
 ```
 
+## Calculate Signal Detection indices
 
-
-Calculate hits, false alarms, misses, and correction rejections (to do)
+Calculate hits, false alarms, misses, and correction rejections 
 ```{r SDT}
-DF$n_hits 
-DF$_fa
-DF$n_miss
-DF$n_cr
+DF <- DF %>%
+  group_by(participant, group, session, task) %>% 
+  mutate(h = ifelse(Face == task & acc == 1, 1, 0)) %>% # calculate hits
+  mutate(m = ifelse(Face == task & acc == 0, 1, 0)) %>% # calculate misses
+  mutate(cr= ifelse(Face != task & acc == 1, 1, 0)) %>% # calculate correct rejections
+  mutate(fa= ifelse(Face != task & acc == 0, 1, 0)) # calculate false alarms
 ```
+
+Summarise hits, false alarms, misses, and correction rejections (collapsed across distractor)
+```{r hits and more}
+DF <- DF %>%
+  group_by(participant, group, session, task) %>% 
+  summarise(h = sum(h),
+            m = sum(m),
+            cr = sum(cr),
+            fa = sum(fa))
+```
+
+Calculate SDT indices (d' and c')
+
+Will have to test how this aligns with the previous procedure followed in Seinfeld et al. (2018, Scientific Reports)
+```{r dprime and more}
+DF.SDT <- psycho::dprime(DF$h, DF$fa, DF$m, DF$cr)
+DF <- cbind(DF, DF.SDT)
+```
+
+Plot the d' per task and session
+```{r plot dprime}
+DF %>% group_by(participant, group, session, task) %>% 
+  ggplot(., aes(group, dprime, fill=group)) +
+  geom_point(aes(colour = group), size = .5, shape = 20)+
+  geom_boxplot(aes(x=group,y=dprime),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
+  ylim(0,5)+
+  theme_classic() +
+  facet_wrap(task~session) + 
+  ggtitle(paste("d' per task and session"))
+```
+
+Plot the c per task and session
+```{r plot bias}
+DF %>% group_by(participant, group, session, task) %>% 
+  ggplot(., aes(group, c, fill=group)) +
+  geom_point(aes(colour = group), size = .5, shape = 20)+
+  geom_boxplot(aes(x=group,y=c),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
+  theme_classic() +
+  facet_wrap(task~session) + 
+  ggtitle(paste("c per task and session"))
+```
+
