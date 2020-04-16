@@ -15,7 +15,10 @@ Script is sequentially to outline logic of steps
 knitr::opts_chunk$set(echo = TRUE)
 library(fs) #install.packages("fs")
 library(psycho) #install.packages("psycho")
+<<<<<<< HEAD
 library(tidyverse) #install.packages("tidyverse")
+=======
+>>>>>>> 9023e446de7ca9ce411515693f431c92dd7759ba
 ```
 
 ## Importing and wrangling data
@@ -29,16 +32,27 @@ DF <- dir_ls("data/", regexp = "\\.csv$") %>% #get all the csv files in the data
   select("participant", "impar_incluso", "condsFile", "Body", "Face", "Type", "Gender", "CAfear", "CAanger", "key_resp_2.keys", "key_resp_2.rt") %>% #select the relevant columns
   filter(!is.na(key_resp_2.rt)) %>% #remove the instruction responses 
   rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys, "task" = condsFile) %>% #give responses and task a logical name
+<<<<<<< HEAD
   mutate(session = str_match(participant,"A|B"), order = str_match(participant,"inc|imp"), group = str_match(participant,"E|C"), participant = str_remove_all(participant, "[:alpha:]")) %>% #get group, order and session
   mutate(task = str_match(task,"fear|anger")) %>% #remove .xlsx from the name
   mutate_all(str_to_lower) #only use lower case, easier to have conditional statements
+=======
+  mutate(session = str_match(participant,"A|B"), group = str_match(participant,"Einc|Eimp"), participant = str_remove_all(participant, "[:alpha:]")) %>% #get group and session
+  mutate(task = str_match(task,"fear|anger")) %>%
+  mutate_all(str_to_lower) #easier to have conditional statements
+>>>>>>> 9023e446de7ca9ce411515693f431c92dd7759ba
 ```
 
 Get the correct response pairing (q and p)
 ```{r keys}
 DF <- DF %>%
+<<<<<<< HEAD
   mutate_all(na_if,"")   %>% #before we can do fill "" need to be NA
   group_by(participant, group, session) %>%  #group by participant, group, session, because we want to do per individual
+=======
+  mutate_all(na_if,"")   %>% #for we can do fill "" need to be NA
+  group_by(participant, group, session) %>% 
+>>>>>>> 9023e446de7ca9ce411515693f431c92dd7759ba
   mutate(CAfear = as.character(CAfear), CAanger = as.character(CAanger))  %>% #remove the factors
   fill(CAfear, .direction = "down") %>% #fill the CAfear column
   fill(CAanger, .direction = "down") %>% #fill the CAangry column
@@ -61,6 +75,7 @@ DF <- DF %>%
 
 Plot accuracy
 ```{r plot}
+<<<<<<< HEAD
 DF%>% group_by(participant, group, session, task) %>% 
   summarise(acc = mean(acc)) %>% 
   ggplot(., aes(x = group, y = acc, fill=group)) +
@@ -68,6 +83,15 @@ DF%>% group_by(participant, group, session, task) %>%
   geom_boxplot(aes(x=group,y=acc),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
   ylim(0,1)+
   theme_classic() + 
+=======
+DF %>% group_by(participant, group, session, task) %>% 
+  summarise(acc = mean(acc)) %>% 
+  ggplot(., aes(group, acc, fill=group)) +
+  geom_point(aes(colour = group), size = .5, shape = 20)+
+  geom_boxplot(aes(x=group,y=acc),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
+  ylim(0,1)+
+  theme_classic() +
+>>>>>>> 9023e446de7ca9ce411515693f431c92dd7759ba
   facet_wrap(task~session) + 
   ggtitle(paste("Accuracy per task and session"))
 ```
@@ -92,6 +116,7 @@ DF <- DF %>%
             m = sum(m),
             cr = sum(cr),
             fa = sum(fa))
+<<<<<<< HEAD
 ```
 
 Calculate SDT indices (d' and c')
