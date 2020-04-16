@@ -16,6 +16,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(fs) #install.packages("fs")
 library(psycho) #install.packages("psycho")
 library(tidyverse) #install.packages("tidyverse")
+#install.packages("devtools")
+#devtools::install_github("thomasp85/patchwork")
+library(patchwork)
 ```
 
 ## Importing and wrangling data
@@ -32,7 +35,11 @@ DF <- dir_ls("data/", regexp = "\\.csv$") %>% #get all the csv files in the data
   rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys, "task" = condsFile) %>% #give responses and task a logical name
   mutate(session = str_match(participant,"A|B"), order = str_match(participant,"inc|imp"), group = str_match(participant,"E|C"), participant = str_remove_all(participant, "[:alpha:]")) %>% #get group, order and session
   mutate(task = str_match(task,"fear|anger")) %>% #remove .xlsx from the name
-  mutate_all(str_to_lower) #only use lower case, easier to have conditional statements
+  mutate_all(str_to_lower) #%>% #only use lower case, easier to have conditional statements
+  #mutate_at(vars(-rt),as.factor) %>% #change to factor
+  #mutate(rt = as.numeric(rt)) #change to numeric
+
+summary(DF)
 ```
 
 Get the correct response pairing (q and p)
@@ -62,10 +69,10 @@ DF <- DF %>%
 
 Plot accuracy
 ```{r plot}
-DF%>% group_by(participant, group, session, task) %>% 
+DF%>% group_by(participant, group, session, task, Gender) %>% 
   summarise(acc = mean(acc)) %>% 
-  ggplot(., aes(x = group, y = acc, fill=group)) +
-  geom_point(aes(colour = group), size = .5, shape = 20)+
+  ggplot(., aes(x = group, y = acc, fill=Gender)) +
+  geom_point(aes(colour = Gender), size = .5, shape = 20)+
   geom_boxplot(aes(x=group,y=acc),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
   ylim(0,1)+
   theme_classic() + 
@@ -78,7 +85,7 @@ DF%>% group_by(participant, group, session, task) %>%
 1. Calculate hits, false alarms, misses, and correction rejections 
 ```{r SDT}
 DF <- DF %>%
-  group_by(participant, group, session, task) %>% 
+  group_by(participant, group, session, task, Gender) %>% 
   mutate(h = ifelse(Face == task & acc == 1, 1, 0)) %>% # calculate hits
   mutate(m = ifelse(Face == task & acc == 0, 1, 0)) %>% # calculate misses
   mutate(cr= ifelse(Face != task & acc == 1, 1, 0)) %>% # calculate correct rejections
@@ -88,7 +95,7 @@ DF <- DF %>%
 2. Summarise hits, false alarms, misses, and correction rejections (collapsed across distractor)
 ```{r hits and more}
 DF <- DF %>%
-  group_by(participant, group, session, task) %>% 
+  group_by(participant, group, session, task, Gender) %>% 
   summarise(h = sum(h),
             m = sum(m),
             cr = sum(cr),
@@ -103,9 +110,9 @@ DF <- cbind(DF, DF.SDT)
 
 4. Plot the d' per task and session
 ```{r plot dprime}
-DF %>% group_by(participant, group, session, task) %>% 
-  ggplot(., aes(group, dprime, fill=group)) +
-  geom_point(aes(colour = group), size = .5, shape = 20)+
+DF %>% group_by(participant, group, session, task, Gender) %>% 
+  ggplot(., aes(group, dprime, fill=Gender)) +
+  geom_point(aes(colour = Gender), size = .5, shape = 20)+
   geom_boxplot(aes(x=group,y=dprime),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
   ylim(0,5)+
   theme_classic() +
@@ -115,9 +122,9 @@ DF %>% group_by(participant, group, session, task) %>%
 
 5. Plot the c per task and session
 ```{r plot bias}
-DF %>% group_by(participant, group, session, task) %>% 
-  ggplot(., aes(group, c, fill=group)) +
-  geom_point(aes(colour = group), size = .5, shape = 20)+
+DF %>% group_by(participant, group, session, task, Gender) %>% 
+  ggplot(., aes(group, c, fill=Gender)) +
+  geom_point(aes(colour = Gender), size = .5, shape = 20)+
   geom_boxplot(aes(x=group,y=c),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
   theme_classic() +
   facet_wrap(task~session) + 
@@ -154,6 +161,47 @@ plot(DF$SCdprime, DF$dprime)
 For bias
 ```{r comparison bias}
 plot(DF$SCc, DF$c)
+```
+
+## Plot the effect of Gender as in Seinfeld et al. (2018)
+
+Plot the d' per task, session, and gender
+
+1. Calculate the difference
+
+```{r difference}
+DF.diff <- DF %>%
+  select(participant, group, session, task, Gender, dprime, c) %>%
+  pivot_wider(names_from = session, values_from = c(dprime,c)) %>%
+  mutate(dprime_diff = dprime_b - dprime_a, c_diff = c_b - c_a) %>%
+  select(participant, group, task, Gender, dprime_diff, c_diff)
+```
+
+1. dprime
+```{r plot dprime_diff}
+d <- DF.diff %>% group_by(participant, group, task, Gender) %>% 
+  ggplot(., aes(group, dprime_diff, fill=group)) +
+  geom_point(aes(colour = group), size = .5, shape = 20)+
+  geom_boxplot(aes(x=group,y=dprime_diff),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
+  ylim(0,5)+
+  theme_classic() +
+  facet_wrap(task~Gender) + 
+  ggtitle(paste("d' difference"))
+```
+
+2. c
+```{r plot c_diff}
+c <- DF.diff %>% group_by(participant, group, task, Gender) %>% 
+  ggplot(., aes(group, c_diff, fill=group)) +
+  geom_point(aes(colour = group), size = .5, shape = 20)+
+  geom_boxplot(aes(x=group,y=c_diff),position=position_nudge(x = .1, y = 0),outlier.shape = NA, alpha = .5, width = .1, colour = "black")+ 
+  theme_classic() +
+  facet_wrap(task~Gender) + 
+  ggtitle(paste("bias difference"))
+```
+
+```{r dprime gender}
+d | c
 ```
 
 ## Next: Bayesian stats
