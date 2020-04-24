@@ -13,6 +13,7 @@ Script is sequentially to outline logic of steps
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(plyr)
 library(fs) #install.packages("fs")
 library(psycho) #install.packages("psycho")
 library(tidyverse) #install.packages("tidyverse")
@@ -35,11 +36,19 @@ DF <- dir_ls("data/", regexp = "\\.csv$") %>% #get all the csv files in the data
   rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys, "task" = condsFile) %>% #give responses and task a logical name
   mutate(session = str_match(participant,"A|B"), order = str_match(participant,"inc|imp"), group = str_match(participant,"E|C"), participant = str_remove_all(participant, "[:alpha:]")) %>% #get group, order and session
   mutate(task = str_match(task,"fear|anger")) %>% #remove .xlsx from the name
-  mutate_all(str_to_lower) #%>% #only use lower case, easier to have conditional statements
-  #mutate_at(vars(-rt),as.factor) %>% #change to factor
-  #mutate(rt = as.numeric(rt)) #change to numeric
+  mutate_all(str_to_lower) #only use lower case, easier to have conditional statements
+```
 
-summary(DF)
+If the above doesn't work you can also try the following (need install/load plyr):
+```{r data 2, warning=FALSE}
+myfiles = list.files("data",pattern="*.csv", full.names=TRUE)
+DF = ldply(myfiles, read_csv) %>%
+  select("participant", "impar_incluso", "condsFile", "Body", "Face", "Type", "Gender", "CAfear", "CAanger", "key_resp_2.keys", "key_resp_2.rt") %>% #select the relevant columns
+  filter(!is.na(key_resp_2.rt)) %>% #remove the instruction responses 
+  rename("rt"= key_resp_2.rt, "resp" = key_resp_2.keys, "task" = condsFile) %>% #give responses and task a logical name
+  mutate(session = str_match(participant,"A|B"), order = str_match(participant,"inc|imp"), group = str_match(participant,"E|C"), participant = str_remove_all(participant, "[:alpha:]")) %>% #get group, order and session
+  mutate(task = str_match(task,"fear|anger")) %>% #remove .xlsx from the name
+  mutate_all(str_to_lower) #only use lower case, easier to have conditional statements
 ```
 
 Get the correct response pairing (q and p)
@@ -203,5 +212,12 @@ c <- DF.diff %>% group_by(participant, group, task, Gender) %>%
 ```{r dprime gender}
 d | c
 ```
+
+Save the files
+```{r save}
+write.csv(file = "data_processed_long.csv",DF, row.names = FALSE)
+write.csv(file = "data_processed_difference_long.csv", DF.diff, row.names = FALSE)
+```
+
 
 ## Next: Bayesian stats
